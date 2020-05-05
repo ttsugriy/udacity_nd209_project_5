@@ -11,6 +11,9 @@ Update system:
 Install the ROS navigation stack:
 `sudo apt-get install ros-kinetic-navigation`
 
+In case you're getting Python errors for not being able to find `rospkg` module, run
+`pip install rospkg`
+
 Create catkin workspace:
 ```sh
 $ mkdir -p ~/catkin_ws/src
