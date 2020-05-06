@@ -1,5 +1,7 @@
 # Home Service Robot Project
 
+![logo](screenshot.png)
+
 This project implements a simulation of a robot that autonomously maps an environment and is able
 to perform navigation and picking up and dropping off virtual objects.
 
