@@ -3,45 +3,68 @@
 #include "nav_msgs/Odometry.h"
 #include <complex>
 
-//Positions and thresholds
-float pickUp[3] = {3.0, 5.0, 1.0};
-float dropOff[3] = {-1.0, 0.0, 1.0};
-float thresh[2] = {0.3, 0.01};
+static const float pickup[3] = {3.0, 5.0, 1.0};
+static const float dropoff[3] = {-1.0, 0.0, 1.0};
+static float eps[2] = {0.4, 0.03};
 
-//Flags
-bool atPickUp = false;
-bool atDropOff = false;
-bool pickUpDone = false;
-bool dropOffDone = false;
+static const uint32_t shape = visualization_msgs::Marker::CUBE;
 
-void chatterCallback(const nav_msgs::Odometry::ConstPtr &msg)
+// States
+static bool at_pickup = false;
+static bool at_dropoff = false;
+
+static bool reached(const float target[3], const nav_msgs::Odometry::ConstPtr &msg)
 {
+    return std::abs(target[0] - msg->pose.pose.position.x) < eps[0] && std::abs(target[1] - msg->pose.pose.position.y) < eps[0] && std::abs(target[2] - msg->pose.pose.orientation.w) < eps[1];
+}
 
-    //Pick up
-    if (std::abs(pickUp[0] - msg->pose.pose.position.x) < thresh[0] && std::abs(pickUp[1] - msg->pose.pose.position.y) < thresh[0] && std::abs(pickUp[2] - msg->pose.pose.orientation.w) < thresh[1])
-    {
-        if (!atPickUp)
-        {
-            atPickUp = true;
-        }
-    }
-    else
-    {
-        atPickUp = false;
-    }
+void odomCallback(const nav_msgs::Odometry::ConstPtr &msg)
+{
+    at_pickup = reached(pickup, msg);
+    at_dropoff = reached(dropoff, msg);
+}
 
-    //Drop off
-    if (std::abs(dropOff[0] - msg->pose.pose.position.x) < thresh[0] && std::abs(dropOff[1] - msg->pose.pose.position.y) < thresh[0] && std::abs(dropOff[2] - msg->pose.pose.orientation.w) < thresh[1])
-    {
-        if (!atDropOff)
-        {
-            atDropOff = true;
-        }
-    }
-    else
-    {
-        atDropOff = false;
-    }
+static visualization_msgs::Marker createMarker(const float target[3], const uint8_t action)
+{
+    visualization_msgs::Marker marker;
+    // Set the frame ID and timestamp.  See the TF tutorials for information on these.
+    marker.header.frame_id = "map";
+    marker.header.stamp = ros::Time::now();
+
+    // Set the namespace and id for this marker.  This serves to create a unique ID
+    // Any marker sent with the same namespace and id will overwrite the old one
+    marker.ns = "basic_shapes";
+    marker.id = 0;
+
+    marker.type = shape;
+
+    // Set the marker action.  Options are ADD, DELETE, and new in ROS Indigo: 3 (DELETEALL)
+    marker.action = action;
+
+    // Set the pose of the marker.  This is a full 6DOF pose relative to the frame/time specified in the header
+    marker.pose.position.x = target[0];
+    marker.pose.position.y = target[1];
+    marker.pose.position.z = 0;
+
+    marker.pose.orientation.x = 0.0;
+    marker.pose.orientation.y = 0.0;
+    marker.pose.orientation.z = 0.0;
+    marker.pose.orientation.w = target[2];
+
+    // Set the scale of the marker -- 1x1x1 here means 1m on a side
+    marker.scale.x = 0.5;
+    marker.scale.y = 0.5;
+    marker.scale.z = 0.5;
+
+    // Set the color -- be sure to set alpha to something non-zero!
+    marker.color.r = 1.0f;
+    marker.color.g = 0.0f;
+    marker.color.b = 0.0f;
+    marker.color.a = 1.0;
+
+    marker.lifetime = ros::Duration();
+
+    return marker;
 }
 
 int main(int argc, char **argv)
@@ -51,51 +74,12 @@ int main(int argc, char **argv)
     ros::NodeHandle n;
     ros::Rate r(1);
     ros::Publisher marker_pub = n.advertise<visualization_msgs::Marker>("visualization_marker", 1);
-    ros::Subscriber odom_sub = n.subscribe("odom", 1000, chatterCallback);
-
-    // Set our initial shape type to be a cube
-    uint32_t shape = visualization_msgs::Marker::CUBE;
+    ros::Subscriber odom_sub = n.subscribe("odom", 1000, odomCallback);
 
     while (ros::ok())
     {
-        visualization_msgs::Marker marker;
-        // Set the frame ID and timestamp.  See the TF tutorials for information on these.
-        marker.header.frame_id = "map";
-        marker.header.stamp = ros::Time::now();
-
-        // Set the namespace and id for this marker.  This serves to create a unique ID
-        // Any marker sent with the same namespace and id will overwrite the old one
-        marker.ns = "basic_shapes";
-        marker.id = 0;
-
-        // Set the marker type.  Initially this is CUBE, and cycles between that and SPHERE, ARROW, and CYLINDER
-        marker.type = shape;
-
-        // Set the marker action.  Options are ADD, DELETE, and new in ROS Indigo: 3 (DELETEALL)
-        marker.action = visualization_msgs::Marker::ADD;
-
-        // Set the pose of the marker.  This is a full 6DOF pose relative to the frame/time specified in the header
-        marker.pose.position.x = pickUp[0];
-        marker.pose.position.y = pickUp[1];
-        marker.pose.position.z = 0;
-
-        marker.pose.orientation.x = 0.0;
-        marker.pose.orientation.y = 0.0;
-        marker.pose.orientation.z = 0.0;
-        marker.pose.orientation.w = pickUp[2];
-
-        // Set the scale of the marker -- 1x1x1 here means 1m on a side
-        marker.scale.x = 0.5;
-        marker.scale.y = 0.5;
-        marker.scale.z = 0.5;
-
-        // Set the color -- be sure to set alpha to something non-zero!
-        marker.color.r = 1.0f;
-        marker.color.g = 0.0f;
-        marker.color.b = 0.0f;
-        marker.color.a = 1.0;
-
-        marker.lifetime = ros::Duration();
+        bool pickup_done = false;
+        bool dropoff_done = false;
 
         // Publish the marker
         while (marker_pub.getNumSubscribers() < 1)
@@ -108,40 +92,27 @@ int main(int argc, char **argv)
             sleep(1);
         }
 
-        marker_pub.publish(marker);
-        ROS_INFO("Pick-up marker displayed");
+        ROS_INFO("Publishing pick-up marker");
+        marker_pub.publish(createMarker(pickup, visualization_msgs::Marker::ADD));
 
-        //Wait for Pick-Up
-        while (!atPickUp)
-        {
+        while (!at_pickup)
             ros::spinOnce();
+        if (!pickup_done)
+        {
+            ROS_INFO("Publishing pick-up marker removal");
+            marker_pub.publish(createMarker(pickup, visualization_msgs::Marker::DELETE));
+            pickup_done = true;
         }
 
-        if (atPickUp && !pickUpDone)
-        {
-            marker.action = visualization_msgs::Marker::DELETE;
-            marker_pub.publish(marker);
-            ROS_INFO("Pick-up marker removed");
-            pickUpDone = true;
-        }
-
-        //Wait for Drop-Off
-        while (!atDropOff)
-        {
+        while (!at_dropoff)
             ros::spinOnce();
-        }
-
-        if (atDropOff && !dropOffDone)
+        if (!dropoff_done)
         {
-            marker.pose.position.x = dropOff[0];
-            marker.pose.position.y = dropOff[1];
-            marker.pose.orientation.w = dropOff[2];
-            marker.action = visualization_msgs::Marker::ADD;
-            marker_pub.publish(marker);
-            ROS_INFO("Drop-off marker displayed");
-            dropOffDone = true;
+            ROS_INFO("Publishing marker to be displayed");
+            marker_pub.publish(createMarker(dropoff, visualization_msgs::Marker::ADD));
+            dropoff_done = true;
             ros::Duration(10.0).sleep();
         }
-        return 0;
     }
+    return 0;
 }
